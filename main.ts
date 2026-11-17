@@ -1,4 +1,4 @@
-// Frost Radar — a token-radar-01 entry (Node 22, standard library only).
+// Frost Radar v2 — a token-radar-01 entry (Node 22, standard library only).
 //
 // The program reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), scores every
 // admissible pre-token protocol with the model in lib/radar.ts, writes the ranked board to
@@ -6,6 +6,11 @@
 // dashboard/ and screenshots/ to /output, and writes /output/dossier.json with the vendored make.fun
 // library. The dashboard is a static page with no network: dashboard/index.html, dashboard/app.css and
 // dashboard/app.js read /output/data.js, which this program writes from the same board.
+//
+// The v2 model measures its base multiple from the snapshot itself: the median mcap/TVL of the
+// protocols whose token already trades, per category where the category holds at least three of them,
+// else the global median. The run prints how many comparables it measured and what the median came to,
+// so the number is on the record, not buried in code.
 //
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
@@ -87,5 +92,6 @@ writeFileSync(
 
 process.stdout.write(
   `frost radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
+    `frost radar: model frost-radar-2 measured its multiple from ${radar.comparables.count} comparables: global median mcap/TVL ${radar.comparables.global_median.toFixed(3)}, ${radar.comparables.categories.length} categories with their own median\n` +
     `frost radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (${dashFiles.length} files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );

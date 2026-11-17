@@ -21,16 +21,14 @@
 
 <section class="model" id="modelBox">
   <h2>How the value is modelled</h2>
-  <p><strong>Implied value = TVL &times; 0.30 &times; growth multiplier &times; seasoning.</strong>
-  The growth multiplier comes from the protocol&rsquo;s seven-day TVL change, clamped to &minus;75%&hellip;+200%
-  and weighted 0.6, so a hot week lifts the value and a cold week cuts it, but neither decides it alone.
-  Seasoning starts at 0.70 and saturates toward 1.00 as the protocol ages without a token
-  (half-seasoned after about a year); a protocol with no tracking date is read as 180 days old, a
-  deliberately young guess. Every row&rsquo;s detail view shows its own three numbers.</p>
-  <p class="fine">A protocol &ldquo;records no token&rdquo; means its DefiLlama record carries none — not proof it has
-  none. Tokens that already trade are listed separately, at the market&rsquo;s own value, and never mixed into
-  this ranking. This board is the entry&rsquo;s own claim about value; it does not predict whether or when a
-  token is issued.</p>
+  <p><strong>Implied value = TVL &times; market multiple &times; growth multiplier &times; chain breadth &times; seasoning.</strong>
+  The multiple is the median mcap/TVL of this snapshot&rsquo;s token-trading protocols &mdash; per category where the
+  category holds at least three live tokens, else the global median. Growth comes from the seven-day TVL change
+  (clamped to &minus;75%&hellip;+200%, weighted 0.6); breadth is logarithmic in the chain count; seasoning rises from
+  0.70 toward 1.00 as the protocol ages without a token. Each row&rsquo;s detail view shows its own five numbers.</p>
+  <div class="comp-grid" id="compGrid" aria-label="Market multiples measured from this snapshot's live tokens"></div>
+  <p class="fine">A protocol &ldquo;records no token&rdquo; means its DefiLlama record carries none. Tokens that already trade
+  are listed separately, at the market&rsquo;s own value, and never mixed into this ranking.</p>
 </section>
 
 <main id="app" aria-busy="true">
@@ -42,6 +40,13 @@
   </nav>
 
   <section id="radarPane">
+    <div class="chips" id="chips" role="group" aria-label="Quick filters">
+      <button type="button" data-chip="" class="active">All protocols</button>
+      <button type="button" data-chip="watch">Watchlist</button>
+      <button type="button" data-chip="movers">Fast movers &middot; 7d &gt; 10%</button>
+      <button type="button" data-chip="early">New &amp; early &middot; under 180 days</button>
+      <button type="button" data-chip="multichain">Multi-chain &middot; 5+ chains</button>
+    </div>
     <div class="controls" id="controls">
       <label class="ctl">Search
         <input type="search" id="q" placeholder="Name or slug…" autocomplete="off">
@@ -59,6 +64,7 @@
           <option value="tvl_usd">TVL</option>
           <option value="change_7d">7-day change</option>
           <option value="age_days">Age</option>
+          <option value="multiple">Market multiple</option>
           <option value="name">Name</option>
         </select>
       </label>
@@ -75,13 +81,14 @@
             <th data-sort="tvl_usd" class="num">TVL</th>
             <th data-sort="change_7d" class="num">7-day</th>
             <th data-sort="age_days" class="num">Age</th>
+            <th data-sort="multiple" class="num">Multiple</th>
             <th data-sort="implied_value_usd" class="num">Implied value</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
-    <p class="hint">Click a row for its model breakdown and farm plan. Click a column heading to sort.</p>
+    <p class="hint">Click a row for its model breakdown, why it ranks where it does, and its farm plan. Click a column heading to sort.</p>
   </section>
 
   <section id="livePane" hidden>
@@ -97,18 +104,20 @@
             <th class="num">TVL</th>
             <th class="num">Market cap</th>
             <th class="num">7-day</th>
+            <th class="num">mcap&thinsp;/&thinsp;TVL</th>
           </tr>
         </thead>
         <tbody id="liveRows"></tbody>
       </table>
     </div>
     <p class="hint">These tokens already trade, so the board shows the market&rsquo;s own value for them and
-    does not rank them against protocols still to launch.</p>
+    does not rank them against protocols still to launch. Their mcap&thinsp;/&thinsp;TVL ratios are the
+    comparables the ranking&rsquo;s multiple is measured from.</p>
   </section>
 </main>
 
 <footer>
-  <p>Frost Radar &middot; model frost-radar-1 &middot; data: DefiLlama protocols snapshot, sealed for this
+  <p>Frost Radar &middot; model frost-radar-2 &middot; data: DefiLlama protocols snapshot, sealed for this
   competition. Implied values are the entry&rsquo;s own claim, never a market price.</p>
 </footer>
 
