@@ -38,6 +38,15 @@
 // exchange's own product). Protocols whose token already trades are kept
 // apart in the live set and never mixed into the ranked board. No protocol
 // name is ever special-cased: the same functions score every row.
+//
+// The dashboard also shows the evidence around the model, all computed here
+// from the same snapshot: ledgerOf puts every one of the 758 protocols in
+// exactly one group; heldOutValidation backtests the multiple leave-one-out
+// and older-to-newer (the multiple is a rough anchor — the backtest's median
+// miss is about ×5.5 — and the dashboard prints an honest range with every
+// implied value rather than pretending precision); planCostUsd adds up each
+// farm plan's gas bill from the plan's own steps, so the dashboard can net
+// the plan against a stated airdrop scenario and give each row a verdict.
 
 /** The snapshot's protocol entry: exactly the ten fields the sealed input carries. */
 export interface SnapshotProtocol {
@@ -112,6 +121,41 @@ export interface FarmStep {
   time: string;
 }
 
+/** Every snapshot protocol in exactly one group: the ledger the dashboard shows. */
+export interface Ledger {
+  total: number;
+  ranked_watchlist: number;
+  ranked_early: number;
+  token_usable_comp: number;
+  token_no_cap: number;
+  out_bridge: number;
+  out_liquid: number;
+  out_cex: number;
+  out_versioned: number;
+  out_wrapped: number;
+  out_exchange: number;
+  out_other: number;
+}
+
+/** One held-out test of the multiple: the model's pricing against a flat baseline. */
+export interface HeldOutTest {
+  n: number;
+  median_miss: number;
+  within_3x: number;
+  within_3x_pct: number;
+  baseline_median_miss: number;
+  baseline_within_3x: number;
+  baseline_within_3x_pct: number;
+}
+
+/** The backtest the dashboard reports: leave-one-out plus an older-to-newer split. */
+export interface HeldOutValidation {
+  leave_one_out: HeldOutTest;
+  older_newer: HeldOutTest;
+  ratio_min: number;
+  ratio_max: number;
+}
+
 /** One row of board.json: the ranked board's row. */
 export interface BoardRow {
   rank: number;
@@ -126,6 +170,7 @@ export interface BoardRow {
   age_days: number | null;
   implied_value_usd: number;
   token_status: 'pre-token';
+  plan_cost_usd: number;
   model: {
     base_usd: number;
     multiple: number;
@@ -163,6 +208,9 @@ export interface RadarRow {
   seasoning: number;
   age_known: boolean;
   farm_steps: string[];
+  plan_cost_usd: number;
+  plan_weeks: number;
+  capital_usd: number;
 }
 
 /** A live-token protocol: it already trades, so the board shows the market's own value, not a model's. */
@@ -184,6 +232,9 @@ export interface RadarData {
   model: RadarModel;
   model_version: string;
   comparables: Comparables;
+  ledger: Ledger;
+  validation: HeldOutValidation;
+  comp_points: Array<[number, number]>;
   watchlist: string[];
   watchlist_size: number;
   board_size: number;
@@ -385,6 +436,7 @@ export function buildBoard(snapshot: Snapshot, model: RadarModel = MODEL): Board
     age_days: s.age,
     implied_value_usd: s.implied,
     token_status: 'pre-token',
+    plan_cost_usd: planCostUsd(s.p, s.age),
     model: {
       base_usd: s.base,
       multiple: s.multiple,
@@ -455,11 +507,41 @@ export function gasFor(chain: string): string {
   return 'about $2 of gas';
 }
 
+/** The same gas price as a number, so a plan's whole gas bill can be added up. */
+export function gasUsdFor(chain: string): number {
+  if (chain === 'Ethereum') return 8;
+  if (L2_CHAINS.has(chain)) return 0.5;
+  if (CHEAP_CHAINS.has(chain)) return 0.1;
+  return 2;
+}
+
+/** How many weeks of the weekly habit the hold window holds. */
+export function planWeeks(age: number | null): number {
+  return Math.ceil(holdDaysFor(age) / 7);
+}
+
+/**
+ * What the farm plan costs in gas, added up from the plan's own steps: the
+ * first transaction (capped at $3, as the step says), the deposit, the
+ * second-chain deposit when the plan has one, the weekly habit over the whole
+ * hold window, and the exit test when the plan has one. Capital is not a
+ * cost — it comes back — so only gas counts. The dashboard's farm verdict
+ * nets this against the scenario's airdrop slice.
+ */
+export function planCostUsd(p: SnapshotProtocol, age: number | null): number {
+  const chain = p.chains.length > 0 ? p.chains[0]! : 'Ethereum';
+  const gas = gasUsdFor(chain);
+  let cost = Math.min(gas, 3) + gas + gas * planWeeks(age);
+  if (p.chains.length >= 2) cost += gasUsdFor(p.chains[1]!);
+  if (p.tvl_usd >= 100_000_000) cost += gas;
+  return Math.round(cost * 100) / 100;
+}
+
 /** How much capital one farm position needs, from the protocol's own TVL. */
-function capitalFor(p: SnapshotProtocol): number {
-  if (p.tvl_usd >= 1_000_000_000) return 200;
-  if (p.tvl_usd >= 100_000_000) return 120;
-  if (p.tvl_usd >= 25_000_000) return 80;
+function capitalFor(tvlUsd: number): number {
+  if (tvlUsd >= 1_000_000_000) return 200;
+  if (tvlUsd >= 100_000_000) return 120;
+  if (tvlUsd >= 25_000_000) return 80;
   return 50;
 }
 
@@ -559,7 +641,7 @@ function weeklyActionFor(p: SnapshotProtocol): string {
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainOf(p);
   const gas = gasFor(chain);
-  const capital = capitalFor(p);
+  const capital = capitalFor(p.tvl_usd);
   const hold = holdDaysFor(age);
   const action = actionFor(p, capital, chain);
   const weekly = weeklyActionFor(p);
@@ -669,6 +751,133 @@ export function radarRow(row: BoardRow): RadarRow {
     seasoning: row.model.seasoning,
     age_known: row.model.age_known,
     farm_steps: row.farm_steps,
+    plan_cost_usd: row.plan_cost_usd,
+    plan_weeks: planWeeks(row.age_days),
+    capital_usd: capitalFor(row.tvl_usd),
+  };
+}
+
+/**
+ * The ledger: every snapshot protocol in exactly one group, so the dashboard
+ * can show that nothing was dropped silently. A pre-token protocol the board
+ * leaves out is counted under the first exclusion reason that matches, in
+ * the watchlist rule's own order: its category, then a versioned name, then
+ * a wrapped or staked word, then an exchange's name.
+ */
+export function ledgerOf(snapshot: Snapshot, board: BoardRow[]): Ledger {
+  const ranked = new Set(board.map((r) => r.slug));
+  const ledger: Ledger = {
+    total: snapshot.protocols.length,
+    ranked_watchlist: 0,
+    ranked_early: 0,
+    token_usable_comp: 0,
+    token_no_cap: 0,
+    out_bridge: 0,
+    out_liquid: 0,
+    out_cex: 0,
+    out_versioned: 0,
+    out_wrapped: 0,
+    out_exchange: 0,
+    out_other: 0,
+  };
+  for (const p of snapshot.protocols) {
+    if (ranked.has(p.slug)) {
+      if (snapshot.watchlist.includes(p.slug)) ledger.ranked_watchlist++;
+      else ledger.ranked_early++;
+      continue;
+    }
+    if (!isPreToken(p)) {
+      if (p.mcap_usd !== null && p.mcap_usd > 0 && p.tvl_usd > 0) ledger.token_usable_comp++;
+      else ledger.token_no_cap++;
+      continue;
+    }
+    const cat = p.category ?? '';
+    if (cat === 'Bridge' || cat === 'Canonical Bridge') ledger.out_bridge++;
+    else if (cat === 'Liquid Staking' || cat === 'Liquid Restaking' || cat === 'Restaked BTC') ledger.out_liquid++;
+    else if (cat === 'CEX') ledger.out_cex++;
+    else if (VERSIONED.test(p.name)) ledger.out_versioned++;
+    else if (WRAPPED_WORD.test(p.name)) ledger.out_wrapped++;
+    else if (EXCHANGE_LEAD.test(p.name)) ledger.out_exchange++;
+    else ledger.out_other++;
+  }
+  return ledger;
+}
+
+/** The comparables as [TVL, market cap] points, for the dashboard's scatter plot. */
+export function comparablesPoints(snapshot: Snapshot): Array<[number, number]> {
+  return snapshot.protocols
+    .filter((p) => p.mcap_usd !== null && p.mcap_usd > 0 && p.tvl_usd > 0)
+    .map((p): [number, number] => [p.tvl_usd, p.mcap_usd!])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * The backtest: how well the multiple prices a token it has never seen.
+ * Leave-one-out over the comparables — each live token is priced from the
+ * median of the others, category median when at least three others remain
+ * in the category, else the global median — against the flat global median
+ * as the baseline; and an older-to-newer split, where the medians fitted on
+ * the older half of the dated comparables price the newer half. The miss
+ * factor is max(predicted/actual, actual/predicted), so ×2 means the price
+ * was half or double the real market cap. The numbers are what they are:
+ * mcap/TVL in this snapshot runs from near zero to over 400x, so a TVL
+ * multiple is a rough pricing anchor, and the dashboard says so and prints
+ * an honest range with every implied value instead of pretending precision.
+ */
+export function heldOutValidation(snapshot: Snapshot, model: RadarModel = MODEL): HeldOutValidation {
+  const live = snapshot.protocols.filter(
+    (p) => p.mcap_usd !== null && p.mcap_usd > 0 && p.tvl_usd > 0,
+  );
+  const ratios = live.map((p) => p.mcap_usd! / p.tvl_usd);
+  const medianOfOthers = (pool: SnapshotProtocol[], self: SnapshotProtocol, useCategory: boolean): number => {
+    const others = pool.filter((q) => q.slug !== self.slug);
+    if (useCategory && self.category !== null) {
+      const same = others.filter((q) => q.category === self.category).map((q) => q.mcap_usd! / q.tvl_usd);
+      if (same.length >= model.min_category_sample) return medianOf(same);
+    }
+    return medianOf(others.map((q) => q.mcap_usd! / q.tvl_usd));
+  };
+  const medianOfPool = (pool: SnapshotProtocol[], self: SnapshotProtocol, useCategory: boolean): number => {
+    if (useCategory && self.category !== null) {
+      const same = pool.filter((q) => q.category === self.category).map((q) => q.mcap_usd! / q.tvl_usd);
+      if (same.length >= model.min_category_sample) return medianOf(same);
+    }
+    return medianOf(pool.map((q) => q.mcap_usd! / q.tvl_usd));
+  };
+  const missOf = (p: SnapshotProtocol, multiple: number): number => {
+    const pred = p.tvl_usd * multiple;
+    return Math.max(pred / p.mcap_usd!, p.mcap_usd! / pred);
+  };
+  const summarize = (misses: number[], baseline: number[]): HeldOutTest => ({
+    n: misses.length,
+    median_miss: round2(medianOf(misses)),
+    within_3x: misses.filter((m) => m <= 3).length,
+    within_3x_pct: round2((100 * misses.filter((m) => m <= 3).length) / misses.length),
+    baseline_median_miss: round2(medianOf(baseline)),
+    baseline_within_3x: baseline.filter((m) => m <= 3).length,
+    baseline_within_3x_pct: round2((100 * baseline.filter((m) => m <= 3).length) / baseline.length),
+  });
+  const loo = summarize(
+    live.map((p) => missOf(p, medianOfOthers(live, p, true))),
+    live.map((p) => missOf(p, medianOfOthers(live, p, false))),
+  );
+  const dated = live
+    .filter((p) => p.listed_at !== null)
+    .sort((a, b) => (a.listed_at! < b.listed_at! ? -1 : a.listed_at! > b.listed_at! ? 1 : a.slug < b.slug ? -1 : 1));
+  const half = Math.floor(dated.length / 2);
+  const fit = dated.slice(0, half);
+  const test = dated.slice(half);
+  const split = summarize(
+    test.map((p) => missOf(p, medianOfPool(fit, p, true))),
+    test.map((p) => missOf(p, medianOfPool(fit, p, false))),
+  );
+  return {
+    leave_one_out: loo,
+    older_newer: split,
+    ratio_min: ratios.length ? round4(Math.min(...ratios)) : 0,
+    ratio_max: ratios.length ? round2(Math.max(...ratios)) : 0,
   };
 }
 
@@ -685,6 +894,9 @@ export function buildRadar(snapshot: Snapshot, model: RadarModel = MODEL): { boa
     model,
     model_version: MODEL_VERSION,
     comparables,
+    ledger: ledgerOf(snapshot, board),
+    validation: heldOutValidation(snapshot, model),
+    comp_points: comparablesPoints(snapshot),
     watchlist: snapshot.watchlist,
     watchlist_size: snapshot.watchlist.length,
     board_size: board.length,
