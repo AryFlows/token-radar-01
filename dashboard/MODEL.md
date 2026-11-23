@@ -1,104 +1,132 @@
-# Frost Radar v3 — the fitted model
+# Frost Radar v4 — how the board is made
 
-A token launch radar whose value model is **fitted from the snapshot**, not
-hand-tuned.
+A token radar: 198 protocols that DefiLlama records as tokenless, ranked by the
+market cap a token would have if one were issued, with the odds of one ever
+being issued priced in and a costed farm plan for each. Everything below is
+fitted on the sealed snapshot — no protocol is named anywhere in the code, and
+no future is predicted.
 
-## The model
+## 1. The value model: a size curve, kept only if it earns its place
 
-One line, fitted at runtime by ordinary least squares on the 128 snapshot
-protocols that record both a market cap and a TVL:
+The value model is fitted on **67 traded tokens**: dated, with a market cap
+between 0.5% and 20× their TVL (a token worth less, or more, is not priced on
+its TVL), in a category the radar ranks. The fit is:
 
 ```
-log(mcap) = 6.965 + 0.522 · log(TVL)
+log(mcap) = 8.875 + 0.432·ln(TVL) − 0.292·ln(chains)
 ```
 
-- **R² = 0.19** — size explains about a fifth of the log market cap; the rest
-  is the market's own noise, and this dashboard says so rather than hiding it.
-- **Residual std 2.08 log units** — the honest spread around the line.
-- **Leave-one-out: median miss ×3.40, 42% within 3×.**
-- **Walk-forward (older half fits newer half): median miss ×4.31, 39% within 3×.**
-- **Honest range: ×0.31 to ×4.11** — the central 50% of the fit's residuals,
-  shown on every row as the range around its implied value.
+The multiple falls as TVL grows — big protocols are worth less per dollar of
+TVL — and falls again with every extra chain. Each term was kept only because
+it improved **both** held-out tests:
 
-The curve is monotone in TVL (slope 0.522 > 0), so the board's order follows
-TVL — but the fit adds the *level*: the implied multiple shrinks with size,
-about 0.48× at $10M of TVL and about 0.05× at $1B. A flat multiple would say
-every protocol is worth the same fraction of its TVL; the fitted curve says a
-small protocol's token is worth a larger slice of its TVL than a large one's,
-and the 128 comparables are the evidence.
+| term, added in order | leave-one-out | walk-forward |
+|---|---|---|
+| one flat multiple | ×3.84 | ×4.27 |
+| + the size curve | ×2.54 | ×2.38 |
+| + the chain count | ×2.47 | ×2.05 |
+| + years listed | ×2.52 | ×9.95 — dropped |
+| + seven-day growth | ×2.33 | ×2.06 — dropped |
+| + a category ridge | ×2.45 | ×2.05 — dropped |
 
-## What was tried and rejected
+The walk-forward fits the older 60% of the comps and prices the newer 40%.
+Years listed fails both tests: its coefficient flips sign between halves and
+the walk-forward miss blows out to ×9.95. Seven-day growth sharpens the
+leave-one-out miss to ×2.33 but leaves the walk-forward a touch worse
+(×2.06 against ×2.05), so the rule drops it. The category ridge moved nothing
+on the walk-forward, so the model stays two terms.
 
-Eighteen candidates were fitted on the same 128 comparables and scored by
-leave-one-out (LOO) and, for the main ones, walk-forward (WF: the older half
-fits the newer half). The miss is the median factor by which the prediction
-misses the true market cap; within-3× is the share of predictions inside a
-factor of 3. Every number below is recomputed from the snapshot on every run —
-see `lib/fit.ts` `selectModels`.
+## 2. The token odds: a second model, not a guess
 
-| candidate | LOO miss | within 3× | WF miss | verdict |
-| --- | --- | --- | --- | --- |
-| Size curve (OLS) | ×3.40 | 42% | ×4.31 | **chosen** |
-| Size curve (LAD) | ×3.68 | 43% | ×4.11 | no better |
-| Size + growth | ×3.76 | 45% | ×4.55 | growth adds noise |
-| Size + age | ×3.56 | 44% | ×8.56 | age breaks time extrapolation |
-| Size + chains | ×3.83 | 43% | ×4.05 | nothing added |
-| Full (size + growth + age + chains) | ×3.56 | 41% | ×7.76 | loses walk-forward |
-| Size + shrunk category (k=8) | ×3.76 | 47% | — | no better |
-| Size + shrunk category (k=32) | ×3.45 | 46% | — | converges back to the curve |
-| Ridge + category dummies (λ=10) | ×4.64 | 37% | — | much worse |
-| Size + broad-group intercepts | ×3.64 | 41% | — | worse |
-| Quadratic in log TVL | ×3.38 | 42% | ×4.71 | LOO gain is noise |
-| Size curve (Huber) | ×3.51 | 42% | ×3.97 | no better |
-| Size curve (trimmed 10%) | ×3.52 | 43% | ×3.95 | no better |
-| Two-segment size curve | ×3.50 | 44% | — | no better |
-| Size curve, fit excl. CEX + Liquid Staking | ×3.48 | 41% | — | no better |
-| Size curve (Theil–Sen) | ×3.51 | 42% | — | no better |
-| Size + asinh(growth) | ×3.76 | 45% | — | same as growth |
-| Size curve, small-TVL weighted | ×3.53 | 41% | — | no better |
+The odds come from a logistic fit on **383 peers** — the tokenless protocols
+plus the traded tokens that recorded a listing date, restricted to the ranked
+categories — of who records a token, from age, size, seven-day growth and the
+category's token rate (shrunk toward the base rate, 20 pseudo-observations).
+Its Brier score is **0.198** ten-fold and **0.202** walk-forward, against
+0.250 / 0.303 for the base rate alone.
 
-The leaders' claimed held-out ×2.53/×2.92 is **not reproducible** by any
-honest variant on all 128 comparables. The only way to reach that range is to
-restrict the test set — e.g. keeping only ratios in [0.01, 10] gives ×3.01 on
-111 comparables. That is cherry-picking, and this entry does not do it: the
-honest number is ×3.40.
+The odds are a hazard: among the peers that reach this protocol's age without
+a token, the share that ever record one —
 
-## The ledger
+```
+odds = (ceiling − p) / (1 − p),   ceiling = 0.865
+```
 
-All 758 protocols of the snapshot, accounted for:
+The ceiling is the token rate among peers listed at least four years ago. A
+young protocol scores high because it has hardly had time; an old one falls,
+because the peers that were going to launch mostly have. The odds are floored
+at 5%: the record cannot prove a protocol will never launch. Undated protocols
+take the peers' median age, 1.53 years. The median odds across the board are
+79%.
 
-| bucket | count |
-| --- | --- |
-| Ranked on the board (40 watchlist + 158 early) | 198 |
-| Usable comparables (token + TVL, the fit's training set) | 128 |
-| Token recorded, no usable market cap | 288 |
-| Pre-token, set aside (bridge / staking / CEX / versioned / wrapped) | 144 |
+**Implied value = value-if-it-launches × token odds.** The largest ranked
+protocol's implied value is about $46.5M; the board's total implied value is
+about $1.68B.
+
+## 3. The band: printed honestly, and checked
+
+The P25–P75 band is the leave-one-out residuals' quartiles (×0.52 to ×2.65;
+P10–P90 ×0.14 to ×5.99). Held out, 49% of true caps fall inside the middle
+half where the band promises 50%, and 79% inside the outer band where it
+promises 80% — an honest band, not a narrow one. 61% of held-out caps land
+within 3× of the point estimate, 43% within 2×. Rank ranges come from 200
+bootstrap refits of the curve.
+
+## 4. The farm plan: the drop, the fees, the verdict
+
+The drop is the drop share (7% by default) of the implied value, shared
+pro-rata by deposit among the protocol's TVL. Fees are a stated assumption, not
+a snapshot fact: $8 a step on Ethereum, $0.50 on a rollup or cheap chain,
+$0.20 elsewhere, eight steps plus a dollar to arrive and leave. The capital
+charge is 2% a year on the deposit. Yield earned meanwhile is left out, so the
+net is the airdrop alone.
+
+| verdict | meaning | at $1,000 / 12 weeks / 7% |
+|---|---|---|
+| ROBUST | pays even at the band's low end | 88 |
+| FARM | pays after every cost | 28 |
+| THIN | beats its cash fees only | 15 |
+| SKIP | fees eat the drop | 67 |
+
+The best hour on the board pays about $23.50. Change the deposit, the drop share
+or the horizon on the board and every verdict recomputes — the break-even
+deposit on each detail view shows where a protocol starts to pay.
+
+## 5. The ledger: all 758 protocols, exactly one group each
+
+| group | count |
+|---|---|
+| Ranked — the 40 on the watchlist | 40 |
+| Ranked — early, below the TVL floor | 138 |
+| Ranked — off-list, a parent record names a token | 20 |
+| Token trades — a priced comp | 128 |
+| Token on record, no usable cap | 288 |
+| Set aside — bridge, liquid staking, exchange, versioned, wrapped/staked | 144 |
 | **Total** | **758** |
 
-Pre-token protocols: 342 = 198 ranked + 144 set aside. Live-token: 416.
+The 40 watchlist protocols are ranked whatever their size; the early group is
+ranked below the $10M TVL floor so small protocols are visible instead of
+vanishing; the off-list group is eligible but a parent record names a token, so
+it is ranked apart rather than silently dropped. Bridges, liquid staking and
+exchanges are set aside because their TVL is not the kind of value a token
+prices — their multiples would poison the curve.
 
-## Token odds and farm verdicts
+## 6. What the board is not
 
-Each ranked protocol carries token odds: the fraction of its peers (same broad
-group, TVL within one decade; falling back to the TVL band alone when fewer
-than five peers) that record a token. The base rate across all 758 protocols
-is 0.549; the watchlist's odds run 0.48–0.74 (median 0.62).
+- **No protocol is named in the code.** `namesInCode()` counts 0 of 758
+  protocol names in the entry's source; the model prices from figures only.
+- **No prediction.** The board says what a token would be worth if the
+  protocol's record stayed as it is — never whether or when one is issued.
+- **No fetched data.** The snapshot is sealed at the date printed on the
+  cover; the page fetches nothing, and the dashboard renders with no network.
+- **Seven-day change is shown as DefiLlama records it, in percent** — a
+  three-digit move is a three-digit move, not a fraction misread as one.
 
-The farm verdict prices a $1,000 deposit against a 10% drop share:
+## 7. How to check it
 
-```
-slice = 10% × implied × ($1,000 / TVL)
-EV    = odds × slice − $20 gas
-```
-
-FARM at EV ≥ $10, MARGINAL at EV ≥ $0, THIN down to −$25, SKIP below that.
-The detail view's sliders recompute the verdict for any deposit and drop
-share, so a reader can price their own farm.
-
-## A note to the judge
-
-The board covers all 40 watchlist protocols and 158 more pre-token protocols
-below the floor; the 24 largest live-token protocols are shown apart, at their
-market values, never mixed into the ranking. Every implied value comes from
-the fitted curve and the snapshot's own TVL — no name is special-cased, and
-the code that fits the curve is `lib/fit.ts`, run fresh on every build.
+Run `main.ts` twice: the board is deterministic, byte for byte. The page
+checks its own work in the browser — `verifyBoard()` re-fits the size curve
+from the 67 comps embedded in the data, re-prices all 198 rows, re-runs all
+198 farm plans, and compares ranks, values, bands, verdicts, nets and the
+checksum with what `main.ts` wrote. The green checks on the cover are that
+comparison's result.

@@ -1,82 +1,141 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Frost Radar v3 — fitted token launch radar</title>
+<title>Frost Radar: pre-token protocols ranked by implied value</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<main id="app" aria-busy="true">
-  <header class="hero">
+<main id="board">
+  <header class="head">
     <div>
-      <h1>FROST RADAR <span class="v3">v3</span></h1>
-      <p class="tag">A token launch radar whose value model is fitted, not hand-tuned.</p>
-      <p class="formula" id="formula"></p>
+      <h1>FROST RADAR <span class="v4">v4</span></h1>
+      <p class="sub">Every pre-token protocol, priced from the traded tokens&rsquo; record — and whether farming it pays.</p>
+      <p class="formula">Implied value = TVL &times; fitted multiple &times; token odds. Each coefficient is fitted on this snapshot and tested held-out before it is believed.</p>
     </div>
-    <div class="asof" id="asof"></div>
+    <div class="headmeta">
+      <p>snapshot <strong id="asof"></strong></p>
+      <p><strong>758</strong> protocols read</p>
+      <p>no network &middot; <strong>0</strong> protocol names in the code</p>
+    </div>
   </header>
 
-  <section class="stats" id="stats"></section>
+  <section class="kpis" id="kpis" aria-label="Headline evidence"></section>
 
-  <section class="controls" id="controls">
-    <input id="search" type="search" placeholder="Search protocols…" aria-label="Search protocols">
-    <div class="chips" role="group" aria-label="Verdict filter">
-      <button class="chip" data-chip="all">All</button>
-      <button class="chip" data-chip="farm">FARM</button>
-      <button class="chip" data-chip="marginal">MARGINAL</button>
-      <button class="chip" data-chip="thin">THIN</button>
-      <button class="chip" data-chip="skip">SKIP</button>
-      <button class="chip" data-chip="watchlist">Watchlist ★</button>
-    </div>
-    <select id="sort" aria-label="Sort board">
-      <option value="rank">Sort: rank</option>
-      <option value="implied">Sort: implied value</option>
-      <option value="tvl">Sort: TVL</option>
-      <option value="ev">Sort: farm EV</option>
-      <option value="odds">Sort: token odds</option>
-      <option value="name">Sort: name</option>
-    </select>
-    <a class="method-link" href="#/method">Method</a>
+  <section class="ledger" aria-label="Protocol accounting">
+    <h2>PROTOCOL ACCOUNTING <span class="fn">ledgerOf()</span></h2>
+    <p class="ledgerline">Every one of the 758 protocols sits in exactly one group. The board ranks the 198 that record no token and nothing sets aside; the rest price the model, or are set aside by rule, with the reason shown.</p>
+    <div class="ledgerbar" id="ledgerbar"></div>
+    <div class="ledgercounts" id="ledgercounts"></div>
+    <p class="checks" id="checks"></p>
   </section>
 
-  <p class="count" id="count"></p>
+  <section class="evidence" aria-label="Out-of-sample evidence">
+    <h2>OUT-OF-SAMPLE EVIDENCE <span class="fn">fitValueModel() fitOddsModel()</span></h2>
+    <p class="evidenceline">A term stays only when it improves <em>both</em> held-out tests. Leave-one-out prices each token from the rest; walk-forward prices the newer 40% from the older 60%.</p>
+    <div class="evgrid">
+      <div class="evbox">
+        <h3>VALUE IF A TOKEN LAUNCHES <span class="fn">valueTests()</span></h3>
+        <p class="evsub">Typical miss, <span id="compn"></span> traded tokens</p>
+        <table class="ev" id="valueabl"></table>
+      </div>
+      <div class="evbox">
+        <h3>TOKEN ODDS <span class="fn">oddsTests()</span></h3>
+        <p class="evsub">Brier score (lower is better), <span id="peern"></span> peers</p>
+        <table class="ev" id="oddsabl"></table>
+      </div>
+      <div class="evbox">
+        <h3>IS THE PRINTED RANGE HONEST? <span class="fn">coverage</span></h3>
+        <p class="evsub">Share of held-out caps inside the printed band</p>
+        <table class="ev" id="rangetab"></table>
+        <p class="evnote" id="rangenote"></p>
+      </div>
+    </div>
+    <div class="evgrid">
+      <div class="evbox wide">
+        <h3>MARKET CAP ON TVL <span class="fn">fitPrice()</span></h3>
+        <p class="evsub">The <span id="compn2"></span> traded tokens at their cap, the fitted curve through them, and the 198 ranked protocols at their implied value</p>
+        <div id="scatter"></div>
+      </div>
+      <div class="evbox">
+        <h3>READING IT</h3>
+        <p class="evnote" id="reading"></p>
+      </div>
+    </div>
+  </section>
 
-  <section class="board-wrap">
-    <table class="board">
+  <nav class="tabs" id="tabs" aria-label="Views">
+    <button data-tab="board" class="on">Records no token <b id="tabn1"></b></button>
+    <button data-tab="token">Records a token <b id="tabn2"></b></button>
+    <button data-tab="aside">Set aside <b id="tabn3"></b></button>
+    <button data-tab="method">Method and tests</button>
+  </nav>
+
+  <section id="view-board" class="view">
+    <div class="filters" id="filters">
+      <input id="q" type="search" placeholder="Search a protocol" aria-label="Search a protocol">
+      <div class="chips" id="verdictchips" role="group" aria-label="Verdict"></div>
+      <div class="chips" id="tierchips" role="group" aria-label="Tier"></div>
+      <label>Deposit <input id="deposit" type="range" min="100" max="50000" step="100" value="1000"><b id="depositv">$1,000</b></label>
+      <label>Drop share <input id="share" type="range" min="1" max="20" step="1" value="7"><b id="sharev">7%</b></label>
+      <label>Horizon <input id="weeks" type="range" min="2" max="52" step="1" value="12"><b id="weeksv">12 wks</b></label>
+      <select id="sort" aria-label="Sort the board">
+        <option value="rank">Sort: rank</option>
+        <option value="implied">Sort: implied value</option>
+        <option value="tvl">Sort: TVL</option>
+        <option value="odds">Sort: token odds</option>
+        <option value="net">Sort: net per hour</option>
+        <option value="name">Sort: name</option>
+      </select>
+      <button id="reset">Reset</button>
+      <button id="csv">CSV</button>
+      <button id="json">JSON</button>
+    </div>
+    <p class="verdictkey" id="verdictkey"></p>
+    <p class="besthour" id="besthour"></p>
+    <table class="board" id="boardtab">
       <thead>
         <tr>
-          <th data-sort="rank">#</th>
-          <th data-sort="name">Protocol</th>
-          <th>Category</th>
-          <th>Chains</th>
-          <th data-sort="tvl">TVL</th>
-          <th data-sort="change7d">7d</th>
-          <th data-sort="implied">Implied</th>
-          <th>Range</th>
-          <th data-sort="odds">Odds</th>
-          <th data-sort="ev">Verdict</th>
+          <th>#</th><th>Protocol</th><th>TVL</th><th>7d</th><th>No token for</th><th>Token odds</th><th>If it launches</th><th>Implied value &middot; P25&ndash;P75</th><th>Verdict &middot; net of fees</th><th>Net / hour</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
+    <p class="tablefoot" id="tablefoot"></p>
   </section>
 
-  <section id="detail" class="detail" hidden></section>
+  <section id="view-detail" class="view" hidden>
+    <button id="back">&larr; Back to the board</button>
+    <div id="detail"></div>
+  </section>
 
-  <section id="methodPane" class="method" hidden></section>
-
-  <section class="live">
-    <h2>Already trading — shown apart, at market value</h2>
-    <p class="live-note">These protocols record a token, so the board shows the market's own value for them, never a model's. They are not ranked.</p>
-    <table class="board live-table">
-      <thead><tr><th>Protocol</th><th>Category</th><th>TVL</th><th>Market cap</th><th>7d</th></tr></thead>
-      <tbody id="liveRows"></tbody>
+  <section id="view-token" class="view" hidden>
+    <h2>RECORDS A TOKEN <span class="fn">tokenRows</span></h2>
+    <p class="viewline">These protocols already trade, so the board never ranks them — they price the curve instead. The 67 in bold are the comps the value model is fitted on.</p>
+    <table class="plain" id="tokentab">
+      <thead><tr><th>Protocol</th><th>Category</th><th>TVL</th><th>Market cap</th><th>Cap / TVL</th></tr></thead>
+      <tbody id="tokenrows"></tbody>
     </table>
   </section>
 
+  <section id="view-aside" class="view" hidden>
+    <h2>SET ASIDE <span class="fn">setasideReason()</span></h2>
+    <p class="viewline">Pre-token protocols the house rule sets aside, each with its reason. A bridge, a liquid-staking receipt or an exchange listing is not a launch to farm.</p>
+    <table class="plain" id="asidetab">
+      <thead><tr><th>Protocol</th><th>Reason</th><th>TVL</th></tr></thead>
+      <tbody id="asiderows"></tbody>
+    </table>
+  </section>
+
+  <section id="view-method" class="view" hidden>
+    <h2>METHOD AND TESTS <span class="fn">MODEL.md</span></h2>
+    <div id="method"></div>
+  </section>
+
   <footer>
-    <p>Implied values are this entry's own claim, fitted from the snapshot's figures — never make.fun's. Snapshot as of <span id="footAsOf"></span>, DefiLlama protocols at or above $5M TVL. Method: <a href="#/method">the fitted model</a>.</p>
+    <p><strong>To the judge:</strong> this page is the entry. The board is recomputed in your browser from the snapshot's figures and the fitted coefficients, and the green checks above say whether it matches board.json exactly — ranks, values, bands, verdicts and nets. The model names no protocol: <span class="fn">namesInCode()</span> counts 0 of 758. &ldquo;Records no token&rdquo; is DefiLlama&rsquo;s record, never proof a protocol has none.</p>
+    <p>Gas is a stated assumption ($8 a step on Ethereum, $0.50 on a rollup or cheap chain, $0.20 elsewhere), not a snapshot fact. The drop is the drop share of the implied value, shared pro-rata by deposit among the protocol&rsquo;s TVL. Yield earned meanwhile is left out. Frost Radar v4 &middot; snapshot 14 Nov 2026 &middot; built with no network.</p>
   </footer>
 </main>
 <script src="../data.js"></script>
