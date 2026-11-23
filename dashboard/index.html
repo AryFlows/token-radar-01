@@ -1,180 +1,84 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Frost Radar — token launches, ranked before they happen</title>
+<title>Frost Radar v3 — fitted token launch radar</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header class="masthead">
-  <div class="masthead-inner">
-    <div>
-      <p class="kicker">Token launch radar &middot; snapshot <span id="asof">—</span></p>
-      <h1>Frost Radar</h1>
-      <p class="lede">Protocols whose record carries no token yet, ranked by what a launch would be worth if the
-      record stayed as it is — and what to do to farm each one before it issues one.</p>
-    </div>
-    <dl class="head-stats" id="headStats"></dl>
-  </div>
-</header>
-
-<section class="ledger" id="ledgerBox">
-  <h2>Every protocol accounted for</h2>
-  <div class="ledger-bar" id="ledgerBar" aria-label="Every snapshot protocol in exactly one group"></div>
-  <ul class="ledger-list" id="ledgerList"></ul>
-</section>
-
-<p class="integrity" id="integrity"></p>
-
-<section class="model" id="modelBox">
-  <h2>How the value is modelled</h2>
-  <p><strong>Implied value = TVL &times; market multiple &times; growth multiplier &times; chain breadth &times; seasoning.</strong>
-  The multiple is the median mcap/TVL of this snapshot&rsquo;s token-trading protocols &mdash; per category where the
-  category holds at least three live tokens, else the global median. Each row&rsquo;s detail view shows its own five
-  numbers, its honest range, and its farm verdict. The comparables, the backtest and the full method are on the
-  <a href="#/method">Method &amp; tests</a> tab.</p>
-  <p class="fine">Tokens that already trade are listed separately, at the market&rsquo;s own value,
-  and never mixed into this ranking.</p>
-</section>
-
 <main id="app" aria-busy="true">
-  <section class="detail" id="detail" hidden></section>
+  <header class="hero">
+    <div>
+      <h1>FROST RADAR <span class="v3">v3</span></h1>
+      <p class="tag">A token launch radar whose value model is fitted, not hand-tuned.</p>
+      <p class="formula" id="formula"></p>
+    </div>
+    <div class="asof" id="asof"></div>
+  </header>
 
-  <nav class="tabs" id="tabs">
-    <button type="button" data-tab="radar" class="active">Radar board</button>
-    <button type="button" data-tab="live">Already trading</button>
-    <button type="button" data-tab="method">Method &amp; tests</button>
-  </nav>
+  <section class="stats" id="stats"></section>
 
-  <section id="radarPane">
-    <div class="chips" id="chips" role="group" aria-label="Quick filters">
-      <button type="button" data-chip="" class="active">All protocols</button>
-      <button type="button" data-chip="watch">Watchlist</button>
-      <button type="button" data-chip="farm">Worth farming</button>
-      <button type="button" data-chip="movers">Fast movers &middot; 7d &gt; 10%</button>
-      <button type="button" data-chip="early">New &amp; early &middot; under 180 days</button>
-      <button type="button" data-chip="multichain">Multi-chain &middot; 5+ chains</button>
+  <section class="controls" id="controls">
+    <input id="search" type="search" placeholder="Search protocols…" aria-label="Search protocols">
+    <div class="chips" role="group" aria-label="Verdict filter">
+      <button class="chip" data-chip="all">All</button>
+      <button class="chip" data-chip="farm">FARM</button>
+      <button class="chip" data-chip="marginal">MARGINAL</button>
+      <button class="chip" data-chip="thin">THIN</button>
+      <button class="chip" data-chip="skip">SKIP</button>
+      <button class="chip" data-chip="watchlist">Watchlist ★</button>
     </div>
-    <div class="controls" id="controls">
-      <label class="ctl">Search
-        <input type="search" id="q" placeholder="Name or slug…" autocomplete="off">
-      </label>
-      <label class="ctl">Category
-        <select id="cat"><option value="">All categories</option></select>
-      </label>
-      <label class="ctl">Chain
-        <select id="chain"><option value="">All chains</option></select>
-      </label>
-      <label class="ctl check"><input type="checkbox" id="watchOnly"> Watchlist only</label>
-      <label class="ctl">Sort by
-        <select id="sort">
-          <option value="rank">Rank (implied value)</option>
-          <option value="tvl_usd">TVL</option>
-          <option value="change_7d">7-day change</option>
-          <option value="age_days">Age</option>
-          <option value="multiple">Market multiple</option>
-          <option value="name">Name</option>
-        </select>
-      </label>
-    </div>
-    <p class="count" id="count"></p>
-    <div class="table-wrap">
-      <table id="board">
-        <thead>
-          <tr>
-            <th data-sort="rank" class="num">Rank</th>
-            <th data-sort="name">Protocol</th>
-            <th data-sort="category">Category</th>
-            <th>Chains</th>
-            <th data-sort="tvl_usd" class="num">TVL</th>
-            <th data-sort="change_7d" class="num">7-day</th>
-            <th data-sort="age_days" class="num">Age</th>
-            <th data-sort="multiple" class="num">Multiple</th>
-            <th data-sort="implied_value_usd" class="num">Implied value</th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
-    </div>
-    <p class="hint">Click a row for its model breakdown, why it ranks where it does, its farm verdict and its farm plan. Click a column heading to sort. The verdict pill is the plan netted against the scenario on the Method &amp; tests tab.</p>
+    <select id="sort" aria-label="Sort board">
+      <option value="rank">Sort: rank</option>
+      <option value="implied">Sort: implied value</option>
+      <option value="tvl">Sort: TVL</option>
+      <option value="ev">Sort: farm EV</option>
+      <option value="odds">Sort: token odds</option>
+      <option value="name">Sort: name</option>
+    </select>
+    <a class="method-link" href="#/method">Method</a>
   </section>
 
-  <section id="livePane" hidden>
-    <p class="count" id="liveCount"></p>
-    <div class="table-wrap">
-      <table id="liveTable">
-        <thead>
-          <tr>
-            <th class="num">#</th>
-            <th>Protocol</th>
-            <th>Category</th>
-            <th>Chains</th>
-            <th class="num">TVL</th>
-            <th class="num">Market cap</th>
-            <th class="num">7-day</th>
-            <th class="num">mcap&thinsp;/&thinsp;TVL</th>
-          </tr>
-        </thead>
-        <tbody id="liveRows"></tbody>
-      </table>
-    </div>
-    <p class="hint">These tokens already trade, so the board shows the market&rsquo;s own value for them and
-    does not rank them against protocols still to launch. Their mcap&thinsp;/&thinsp;TVL ratios are the
-    comparables the ranking&rsquo;s multiple is measured from.</p>
+  <p class="count" id="count"></p>
+
+  <section class="board-wrap">
+    <table class="board">
+      <thead>
+        <tr>
+          <th data-sort="rank">#</th>
+          <th data-sort="name">Protocol</th>
+          <th>Category</th>
+          <th>Chains</th>
+          <th data-sort="tvl">TVL</th>
+          <th data-sort="change7d">7d</th>
+          <th data-sort="implied">Implied</th>
+          <th>Range</th>
+          <th data-sort="odds">Odds</th>
+          <th data-sort="ev">Verdict</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
   </section>
 
-  <section id="methodPane" hidden>
-    <div class="judge-panel" id="judgePanel">
-      <h2>How to judge this radar</h2>
-      <p>Five criteria, each answered with its figure — check each one against the board, the detail views and this page&rsquo;s source.</p>
-      <table class="judge-table">
-        <tbody>
-          <tr><th>1. A working radar</th><td>198 rows, ranks 1–198, implied values never rise; watchlist 40 of 40 on the board; the ledger above accounts for all 758 snapshot protocols in exactly one group each.</td></tr>
-          <tr><th>2. The value model</th><td>TVL &times; a multiple measured from this snapshot&rsquo;s own 128 live tokens (14 category medians, else the global median 0.21), &times; growth &times; chain breadth &times; seasoning. No protocol is named in the model; tokens that already trade are listed separately and never ranked. The backtest below prices the multiple honestly.</td></tr>
-          <tr><th>3. Farm plans</th><td>Every row carries 6–9 steps, each with a cost and a time; the plan&rsquo;s gas bill is totalled in the detail view and netted against a stated scenario ($1,000 deposit, 10% of implied value to depositors) into a FARM / MARGINAL / THIN / SKIP verdict.</td></tr>
-          <tr><th>4. The dashboard as a page</th><td>Sortable columns, search, category and chain filters, six quick-filter chips, a detail view for every protocol with its model breakdown, and a separate tab for tokens that already trade.</td></tr>
-          <tr><th>5. It looks made</th><td>Warm paper, ink type, teal for the radar and amber for value; one spacing scale, tabular numerals, a fixed-width table that always fits the viewport.</td></tr>
-        </tbody>
-      </table>
-    </div>
+  <section id="detail" class="detail" hidden></section>
 
-    <h2 class="method-h">How a launch is priced</h2>
-    <p><strong>Implied value = TVL &times; market multiple &times; growth multiplier &times; chain breadth &times; seasoning.</strong>
-    Growth comes from the seven-day TVL change (clamped to &minus;75%&hellip;+200%, weighted 0.6); breadth is
-    logarithmic in the chain count; seasoning rises from 0.70 toward 1.00 as the protocol ages without a token.
-    A median, not a mean: mcap/TVL across live tokens runs from 0.0003 to 400, so one outlier must not set the price.</p>
-    <div class="comp-grid" id="compGrid" aria-label="Market multiples measured from this snapshot's live tokens"></div>
+  <section id="methodPane" class="method" hidden></section>
 
-    <h2 class="method-h">Out-of-sample evidence</h2>
-    <p>The multiple is tested, not trusted: each live token is priced from the median of the <em>other</em>
-    comparables, and the medians fitted on the older half of the dated tokens price the newer half. The miss is
-    the factor between the priced value and the real market cap, so &times;2 means half or double. The multiple is
-    a rough anchor — which is why every implied value carries an honest range, the value divided and multiplied
-    by the backtest&rsquo;s median miss.</p>
-    <div id="evidence"></div>
-
-    <h2 class="method-h">The comparables, plotted</h2>
-    <p>Market cap against TVL on log scales: the 128 live tokens (grey) set the multiple; the board&rsquo;s 198
-    protocols (teal) are priced from them; the line is the global median multiple, 0.21.</p>
-    <div id="scatter"></div>
-
-    <h2 class="method-h">Farm verdicts</h2>
-    <p>Each row&rsquo;s verdict nets its farm plan against one stated scenario: a $1,000 deposit, 10% of the
-    implied value paid to depositors, pro-rata by the deposit&rsquo;s share of TVL. The slice is
-    10% &times; implied value &times; ($1,000 &divide; TVL); the net is the slice minus the plan&rsquo;s gas bill,
-    added up from the plan&rsquo;s own steps. FARM means the net is at least $10, MARGINAL at least $0, THIN at
-    least &minus;$25, SKIP anything worse. The plan&rsquo;s own minimum deposit is $50–$200, so a reader farming
-    the minimum should scale the slice down; the verdict prices the $1,000 position it states.
-    <span id="verdictCounts"></span></p>
+  <section class="live">
+    <h2>Already trading — shown apart, at market value</h2>
+    <p class="live-note">These protocols record a token, so the board shows the market's own value for them, never a model's. They are not ranked.</p>
+    <table class="board live-table">
+      <thead><tr><th>Protocol</th><th>Category</th><th>TVL</th><th>Market cap</th><th>7d</th></tr></thead>
+      <tbody id="liveRows"></tbody>
+    </table>
   </section>
+
+  <footer>
+    <p>Implied values are this entry's own claim, fitted from the snapshot's figures — never make.fun's. Snapshot as of <span id="footAsOf"></span>, DefiLlama protocols at or above $5M TVL. Method: <a href="#/method">the fitted model</a>.</p>
+  </footer>
 </main>
-
-<footer>
-  <p>Frost Radar &middot; model frost-radar-2 &middot; data: DefiLlama protocols snapshot, sealed for this
-  competition. Implied values are the entry&rsquo;s own claim, never a market price.</p>
-</footer>
-
 <script src="../data.js"></script>
 <script src="app.js"></script>
 </body>
